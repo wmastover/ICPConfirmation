@@ -1,0 +1,5 @@
+firecrawl-py>=4.19.0
+openai>=1.98.0
+pyyaml>=6.0.3
+python-dotenv>=1.2.1
+rich>=14.3.3

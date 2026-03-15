@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+results_*.csv
+first_10*.csv
+first_10_results*.csv
+Company*.csv
+venv/
+.venv/

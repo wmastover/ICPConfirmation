@@ -1,0 +1,19 @@
+openrouter:
+  model: "anthropic/claude-3.5-sonnet"
+
+crawl:
+  pages_per_domain: 1    # 1 = homepage only (faster), >1 = full site crawl
+  max_chars: 15000       # max chars of markdown sent to AI per domain
+  concurrency: 3         # number of domains processed in parallel
+  deep_crawl_pages: 10   # pages to crawl on retry when an enrichment value is not found
+
+# Custom enrichment columns — each entry adds a new column to the output CSV.
+# The prompt is sent to the AI along with the crawled website content.
+# Remove or comment out entries you don't need.
+# Set icp_only: true to only run an enrichment when the company passes the ICP check.
+#
+enrichments:
+  - column: "latest_game"
+    prompt: "What is the name of the most recently released mobile game by this studio (not upcoming or in development)?"
+    icp_only: true
+    deep_crawl_fallback: true  # re-crawl with deep_crawl_pages if value is not found on first pass
