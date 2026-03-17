@@ -31,7 +31,7 @@ from rich.table import Table
 
 from src.ai_checker import ICPResult, check_icp, run_enrichment
 from src.crawler import CrawlResult, scrape_domain
-from src.csv_handler import read_domains, write_results
+from src.csv_handler import append_result, init_output_csv, read_domains
 
 console = Console()
 
@@ -248,17 +248,28 @@ def main() -> None:
     icp_results: list[ICPResult] = []
     enrichment_map: dict[str, dict[str, str]] = {}
 
+    # Initialise the output file immediately so partial results survive a crash
+    init_output_csv(output_path, enrichment_columns)
+
+    n_icp = 0
+    n_not = 0
+    n_err = 0
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
+        BarColumn(bar_width=None),
         MofNCompleteColumn(),
         TaskProgressColumn(),
         TimeElapsedColumn(),
         console=console,
         transient=False,
+        expand=True,
     ) as progress:
-        task = progress.add_task("Processing domains...", total=len(domains))
+        task = progress.add_task(
+            f"[cyan]Processing…[/cyan]  [green]✓ {n_icp}[/green]  [red]✗ {n_not}[/red]  [yellow]⚠ {n_err}[/yellow]",
+            total=len(domains),
+        )
 
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
             futures = {
@@ -282,22 +293,74 @@ def main() -> None:
                     crawl_results[domain] = crawl
                     icp_results.append(icp)
                     enrichment_map[domain] = domain_enrichments
+
+                    # Write this row immediately
+                    append_result(
+                        icp,
+                        crawl.pages_crawled,
+                        output_path,
+                        domain_enrichments,
+                        enrichment_columns,
+                    )
+
+                    if icp.is_icp is True:
+                        n_icp += 1
+                        verdict = "[bold green]YES[/bold green]"
+                        conf = _conf_style(icp.confidence)
+                        progress.print(
+                            f"  [green]✓[/green] [cyan]{domain}[/cyan]  ICP: {verdict}  conf: {conf}"
+                        )
+                    elif icp.is_icp is False:
+                        n_not += 1
+                        verdict = "[bold red]NO[/bold red]"
+                        conf = _conf_style(icp.confidence)
+                        progress.print(
+                            f"  [red]✗[/red] [cyan]{domain}[/cyan]  ICP: {verdict}  conf: {conf}"
+                        )
+                    else:
+                        n_err += 1
+                        progress.print(
+                            f"  [yellow]⚠[/yellow] [cyan]{domain}[/cyan]  [red]{icp.error}[/red]"
+                        )
+
                 except Exception as exc:
+                    n_err += 1
                     crawl_results[domain] = CrawlResult(
                         domain=domain, markdown="", pages_crawled=0, error=str(exc)
                     )
-                    icp_results.append(
-                        ICPResult(
-                            domain=domain,
-                            is_icp=None,
-                            confidence="unknown",
-                            reasoning="",
-                            error=str(exc),
-                        )
+                    err_result = ICPResult(
+                        domain=domain,
+                        is_icp=None,
+                        confidence="unknown",
+                        reasoning="",
+                        error=str(exc),
                     )
+                    icp_results.append(err_result)
                     enrichment_map[domain] = {col: ("", "") for col in enrichment_columns}
+
+                    append_result(
+                        err_result,
+                        0,
+                        output_path,
+                        {col: ("", "") for col in enrichment_columns},
+                        enrichment_columns,
+                    )
+
+                    progress.print(
+                        f"  [yellow]⚠[/yellow] [cyan]{domain}[/cyan]  [red]Exception: {exc}[/red]"
+                    )
+
                 finally:
                     progress.advance(task)
+                    progress.update(
+                        task,
+                        description=(
+                            f"[cyan]Processing…[/cyan]  "
+                            f"[green]✓ {n_icp}[/green]  "
+                            f"[red]✗ {n_not}[/red]  "
+                            f"[yellow]⚠ {n_err}[/yellow]"
+                        ),
+                    )
 
     pages_map = {d: cr.pages_crawled for d, cr in crawl_results.items()}
 
@@ -305,7 +368,6 @@ def main() -> None:
     domain_order = {d: i for i, d in enumerate(domains)}
     icp_results.sort(key=lambda r: domain_order.get(r.domain, 9999))
 
-    write_results(icp_results, pages_map, output_path, enrichment_map, enrichment_columns)
     print_summary(icp_results, pages_map)
 
     console.print(f"\nResults saved to [bold cyan]{output_path}[/bold cyan]\n")

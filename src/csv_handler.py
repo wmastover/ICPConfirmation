@@ -21,6 +21,53 @@ OUTPUT_FIELDNAMES = [
 ]
 
 
+def _build_fieldnames(enrichment_columns: Optional[List[str]] = None) -> List[str]:
+    extra: List[str] = []
+    for col in (enrichment_columns or []):
+        extra.append(col)
+        extra.append(f"{col}_comment")
+    return OUTPUT_FIELDNAMES + extra
+
+
+def init_output_csv(
+    output_path: str,
+    enrichment_columns: Optional[List[str]] = None,
+) -> None:
+    """Create (or overwrite) the output CSV with headers only."""
+    fieldnames = _build_fieldnames(enrichment_columns)
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+
+
+def append_result(
+    result: ICPResult,
+    pages_crawled: int,
+    output_path: str,
+    domain_enrichments: Optional[Dict] = None,
+    enrichment_columns: Optional[List[str]] = None,
+) -> None:
+    """Append a single result row to an already-initialised output CSV."""
+    fieldnames = _build_fieldnames(enrichment_columns)
+    row: dict = {
+        "domain": result.domain,
+        "is_icp": "" if result.is_icp is None else str(result.is_icp).lower(),
+        "confidence": result.confidence,
+        "reasoning": result.reasoning,
+        "pages_crawled": pages_crawled,
+        "error": result.error or "",
+    }
+    if enrichment_columns:
+        for col in enrichment_columns:
+            value, comment = (domain_enrichments or {}).get(col, ("", ""))
+            row[col] = value
+            row[f"{col}_comment"] = comment
+
+    with open(output_path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writerow(row)
+
+
 def read_domains(csv_path: str) -> List[str]:
     """
     Read a CSV file and return a list of domain strings.
