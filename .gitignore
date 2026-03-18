@@ -6,6 +6,8 @@ __pycache__/
 results_*.csv
 first_10*.csv
 first_10_results*.csv
+full_results.csv
 Company*.csv
+Unfiltered*.csv
 venv/
 .venv/
